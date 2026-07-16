@@ -1680,6 +1680,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/41/05/c7daebbf0fc59fd6106e34e52a255727443c1db49d046f7ed0bd9dcb6e4e/pipecat_ai-1.5.0-py3-none-any.whl", hash = "sha256:6089ac7ec418b310975c9c16dd472c16f99838810aae707d669b4f6f5981cf8a", size = 11264890, upload-time = "2026-07-04T17:11:47.677Z" },
 ]
 
+[package.optional-dependencies]
+groq = [
+    { name = "groq" },
+]
+
 [[package]]
 name = "platformdirs"
 version = "4.10.0"
@@ -2711,7 +2716,7 @@ dependencies = [
     { name = "groq" },
     { name = "openai" },
     { name = "pgvector" },
-    { name = "pipecat-ai" },
+    { name = "pipecat-ai", extra = ["groq"] },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-ai" },
     { name = "pydantic-settings" },
@@ -2725,7 +2730,7 @@ requires-dist = [
     { name = "groq", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=2.45.0" },
     { name = "pgvector", specifier = ">=0.5.0" },
-    { name = "pipecat-ai", specifier = ">=1.5.0" },
+    { name = "pipecat-ai", extras = ["cartesia", "groq"], specifier = ">=1.5.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
     { name = "pydantic-ai", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.14.0" },

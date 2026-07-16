@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # --- Cartesia (TTS) ---
     cartesia_api_key: str 
     cartesia_voice_id: str
+    cartesia_model_id: str = "sonic-3.5"
 
     # --- OpenAI (Embeddings) ---
     openai_api_key: str

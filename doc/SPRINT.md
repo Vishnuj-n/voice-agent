@@ -23,17 +23,17 @@ Rationale: writing abstract interfaces before touching a real provider API means
 guessing at a shape you don't understand yet. Do one real integration first,
 then extract the interface from what you actually needed.
 
-- [ ] Direct provider calls (no interface yet)
-  - [ ] `GroqWhisperSTT` — one real transcription call against a sample audio file
-  - [ ] `CartesiaTTS` — one real synthesis call producing playable audio
-- [ ] `providers/base.py` (written *after* the above, based on what both calls needed)
-  - [ ] `STTProvider`
-  - [ ] `TTSProvider`
-  - [ ] `LLMProvider`
-- [ ] `providers/registry.py`
-  - [ ] `get_stt_provider()`
-  - [ ] `get_tts_provider()`
-  - [ ] `get_llm_provider()`
+- [x] Direct provider calls (no interface yet)
+  - [x] `GroqWhisperSTT` — one real transcription call against a sample audio file
+  - [x] `CartesiaTTS` — one real synthesis call producing playable audio
+- [x] `providers/base.py` (written *after* the above, based on what both calls needed)
+  - [x] `STTProvider`
+  - [x] `TTSProvider`
+  - [x] `LLMProvider`
+- [x] `providers/registry.py`
+  - [x] `get_stt_provider()`
+  - [x] `get_tts_provider()`
+  - [x] `get_llm_provider()`
 
 **Open decision to make explicitly (not silently skip):** `Transport` is one of
 the five required adapters per the PRD (§6.1). Decide now whether its abstract
