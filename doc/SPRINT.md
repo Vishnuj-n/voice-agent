@@ -60,7 +60,9 @@ belongs in `providers/base.py` alongside the others for consistency.
 
 ---
 
-## Sprint 3 – Pipecat / Streaming Pipeline
+## Sprint 3 – Streaming Pipeline
+> **Note:** Pipecat service wrappers (`GroqSTTService`, `CartesiaTTSService`) are already integrated in Sprint 1 (`providers/groq.py`, `providers/cartesia.py`). This sprint focuses on streaming orchestration — feeding LLM output to TTS incrementally.
+
 - [ ] Create `core/pipeline.py`
 - [ ] `build_pipeline()`
 - [ ] `PydanticAIService`
