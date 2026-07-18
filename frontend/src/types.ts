@@ -10,6 +10,7 @@ export interface Metrics {
   stt_ms: number
   llm_total_ms: number
   llm_time_to_first_token_ms: number
+  tts_total_ms: number
   tts_time_to_first_audio_ms: number
   total_ms: number
 }

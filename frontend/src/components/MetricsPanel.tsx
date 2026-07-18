@@ -8,6 +8,7 @@ const METRIC_ITEMS = [
   { key: 'stt_ms' as const, label: 'STT' },
   { key: 'llm_total_ms' as const, label: 'LLM Total' },
   { key: 'llm_time_to_first_token_ms' as const, label: 'TTFT' },
+  { key: 'tts_total_ms' as const, label: 'TTS Total' },
   { key: 'tts_time_to_first_audio_ms' as const, label: 'TTFA' },
   { key: 'total_ms' as const, label: 'Total' },
 ]

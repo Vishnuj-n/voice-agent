@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, type MutableRefObject } from 'react'
 import type { ConnectionState, Bot, Metrics, ChatMessage } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -7,35 +7,54 @@ const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws'
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
+  const [sessionActive, setSessionActive] = useState(false)
   const [bots, setBots] = useState<Bot[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const audioChunksRef = useRef<string[]>([])
+  // Persistent AudioContext — must be created inside a user gesture to satisfy
+  // the browser autoplay policy. Call initAudio() on the "Start" button click.
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  // Streaming audio scheduler state
+  const audioFormatRef = useRef<{ sample_rate: number; channels: number; encoding: string } | null>(null)
+  const nextPlayTimeRef = useRef<number>(0)
+  // Track active audio sources so we can stop them on cancel
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([])
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    const existing = wsRef.current
+    if (existing) {
+      if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) return
+    }
 
+    console.log('[WS] Connecting to', WS_URL)
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
     ws.onopen = () => {
+      console.log('[WS] Connected')
       setConnectionState('connected')
       setError(null)
     }
 
-    ws.onclose = () => {
-      setConnectionState('disconnected')
-      wsRef.current = null
+    ws.onclose = (event) => {
+      console.log('[WS] Disconnected', event.code, event.reason)
+      if (wsRef.current === ws) {
+        wsRef.current = null
+        setConnectionState('disconnected')
+        setSessionActive(false)
+      }
     }
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error('[WS] Error:', event)
       setError('WebSocket connection failed')
       setConnectionState('disconnected')
     }
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data)
+      console.log('[WS] Received:', msg.type)
 
       switch (msg.type) {
         case 'status':
@@ -77,16 +96,21 @@ export function useWebSocket() {
           break
 
         case 'audio_start':
-          audioChunksRef.current = []
+          audioFormatRef.current = msg.format ?? null
+          nextPlayTimeRef.current = 0
           break
 
-        case 'audio_chunk':
-          audioChunksRef.current.push(msg.data)
+        case 'audio_chunk': {
+          const ctx = audioCtxRef.current
+          if (!ctx) { console.warn('[WS] AudioContext not ready'); break }
+          ctx.resume().then(() => {
+            scheduleAudioChunk(msg.data, ctx, audioFormatRef.current, nextPlayTimeRef, activeSourcesRef)
+          })
           break
+        }
 
         case 'audio_end':
-          playAudioChunks(audioChunksRef.current)
-          audioChunksRef.current = []
+          console.log('[WS] Audio stream complete')
           break
 
         case 'metrics':
@@ -101,7 +125,12 @@ export function useWebSocket() {
   }, [])
 
   const disconnect = useCallback(() => {
-    wsRef.current?.close()
+    const ws = wsRef.current
+    if (!ws) return
+    console.log('[WS] Disconnecting, readyState:', ws.readyState)
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close()
+    }
     wsRef.current = null
     setConnectionState('disconnected')
   }, [])
@@ -109,19 +138,60 @@ export function useWebSocket() {
   const sendMessage = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg))
+    } else {
+      console.warn('[WS] Cannot send, readyState:', wsRef.current?.readyState)
     }
   }, [])
 
-  const sendAudioChunk = useCallback((base64Data: string) => {
-    sendMessage({ type: 'audio_chunk', data: base64Data })
+  const initAudio = useCallback(() => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new AudioContext()
+      console.log('[WS] AudioContext created, sampleRate:', audioCtxRef.current.sampleRate)
+    } else if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume()
+    }
+  }, [])
+
+  let audioChunkCount = 0
+  // connectionState is captured via a ref so the callback always sees the
+  // latest value without needing to be recreated (avoids stale-closure issues).
+  const connectionStateRef = useRef<ConnectionState>('disconnected')
+  connectionStateRef.current = connectionState
+
+  const sendAudioChunk = useCallback((pcmData: ArrayBuffer) => {
+    // Drop mic audio while the bot is thinking or speaking.
+    // This is the primary guard against phantom transcriptions: without it,
+    // chunks captured during TTS playback accumulate in the server buffer and
+    // are fed to STT at the start of the next turn — producing "Thank you"
+    // and other echo artifacts.
+    const state = connectionStateRef.current
+    if (state !== 'listening') return
+
+    audioChunkCount++
+    if (audioChunkCount % 50 === 1) {
+      console.log(`[WS] Audio chunks sent: ${audioChunkCount}`)
+    }
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(pcmData)
+    }
+  }, [])
+
+  const startSession = useCallback(() => {
+    setSessionActive(true)
+    sendMessage({ type: 'start_session' })
   }, [sendMessage])
 
-  const startListening = useCallback(() => {
-    sendMessage({ type: 'start_listening' })
-  }, [sendMessage])
+  const stopSession = useCallback(() => {
+    setSessionActive(false)
+    // Stop any active audio playback immediately
+    for (const src of activeSourcesRef.current) {
+      try { src.stop() } catch { /* already stopped */ }
+    }
+    activeSourcesRef.current = []
+    nextPlayTimeRef.current = 0
 
-  const stopListening = useCallback(() => {
-    sendMessage({ type: 'stop_listening' })
+    sendMessage({ type: 'stop_session' })
   }, [sendMessage])
 
   const selectBot = useCallback(
@@ -133,60 +203,76 @@ export function useWebSocket() {
 
   const clearError = useCallback(() => setError(null), [])
 
-  useEffect(() => {
-    connect()
-    return () => disconnect()
-  }, [connect, disconnect])
-
   return {
     connectionState,
+    sessionActive,
     bots,
     messages,
     metrics,
     error,
     clearError,
+    initAudio,
     sendAudioChunk,
-    startListening,
-    stopListening,
+    startSession,
+    stopSession,
     selectBot,
     connect,
     disconnect,
   }
 }
 
-async function playAudioChunks(chunks: string[]) {
-  if (chunks.length === 0) return
+/**
+ * Schedule a single base64-encoded PCM audio chunk for immediate gapless playback.
+ *
+ * Uses the AudioContext clock (ctx.currentTime) to chain chunks back-to-back:
+ * nextPlayTimeRef tracks the end time of the last scheduled buffer so each new
+ * chunk is queued exactly where the previous one ends — producing seamless,
+ * low-latency streaming audio without waiting for audio_end.
+ */
+function scheduleAudioChunk(
+  b64: string,
+  ctx: AudioContext,
+  format: { sample_rate: number; channels: number; encoding: string } | null,
+  nextPlayTimeRef: MutableRefObject<number>,
+  activeSourcesRef: MutableRefObject<AudioBufferSourceNode[]>,
+) {
+  const sampleRate = format?.sample_rate ?? 44100
+  const numChannels = format?.channels ?? 1
+  const encoding = format?.encoding ?? 'pcm_f32le'
 
-  const audioContext = new AudioContext({ sampleRate: 44100 })
+  // Decode base64 → raw bytes
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
 
-  // Decode base64 chunks into float32 audio data
-  const float32Arrays: Float32Array[] = []
-  for (const b64 of chunks) {
-    const binary = atob(b64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i)
-    }
-    // pcm_f32le: each sample is 4 bytes (float32)
-    const float32 = new Float32Array(bytes.buffer)
-    float32Arrays.push(float32)
+  // Decode PCM encoding → Float32
+  let channelData: Float32Array
+  if (encoding === 'pcm_f32le' || encoding === 'float32') {
+    channelData = new Float32Array(bytes.buffer)
+  } else if (encoding === 'pcm_s16le' || encoding === 'int16') {
+    const int16 = new Int16Array(bytes.buffer)
+    channelData = new Float32Array(int16.length)
+    for (let i = 0; i < int16.length; i++) channelData[i] = int16[i] / 32768.0
+  } else {
+    channelData = new Float32Array(bytes.buffer)
   }
 
-  // Concatenate all chunks
-  const totalLength = float32Arrays.reduce((acc, arr) => acc + arr.length, 0)
-  const combined = new Float32Array(totalLength)
-  let offset = 0
-  for (const arr of float32Arrays) {
-    combined.set(arr, offset)
-    offset += arr.length
+  const numSamples = channelData.length / numChannels
+  const audioBuffer = ctx.createBuffer(numChannels, numSamples, sampleRate)
+  for (let ch = 0; ch < numChannels; ch++) {
+    audioBuffer.getChannelData(ch).set(channelData.subarray(ch * numSamples, (ch + 1) * numSamples))
   }
 
-  // Create AudioBuffer and play
-  const audioBuffer = audioContext.createBuffer(1, combined.length, 44100)
-  audioBuffer.getChannelData(0).set(combined)
+  const startAt = Math.max(ctx.currentTime, nextPlayTimeRef.current)
+  nextPlayTimeRef.current = startAt + audioBuffer.duration
 
-  const source = audioContext.createBufferSource()
+  const source = ctx.createBufferSource()
   source.buffer = audioBuffer
-  source.connect(audioContext.destination)
-  source.start()
+  source.connect(ctx.destination)
+  source.start(startAt)
+  activeSourcesRef.current.push(source)
+  source.onended = () => {
+    const idx = activeSourcesRef.current.indexOf(source)
+    if (idx !== -1) activeSourcesRef.current.splice(idx, 1)
+  }
 }

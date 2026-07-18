@@ -21,8 +21,10 @@ class BrowserTransport(Transport):
     def __init__(
         self,
         silence_threshold: float = 300.0,
-        silence_duration: float = 1.5,
+        silence_duration: float = 1.0,
         max_duration: float = 30.0,
+        min_speech_duration: float = 0.3,
+        warmup_duration: float = 1.0,
         sample_rate: int = 16000,
     ):
         self._ws = None
@@ -31,6 +33,8 @@ class BrowserTransport(Transport):
         self._silence_threshold = silence_threshold
         self._silence_duration = silence_duration
         self._max_duration = max_duration
+        self._min_speech_duration = min_speech_duration
+        self._warmup_duration = warmup_duration
         self._sample_rate = sample_rate
 
     def set_websocket(self, ws) -> None:
@@ -63,13 +67,15 @@ class BrowserTransport(Transport):
         chunks: list[bytes] = []
         speech_started = False
         consecutive_silence = 0
+        speech_chunks = 0  # Track actual speech windows
 
         # VAD parameters — match CLI thresholds
         # Process in ~0.1s windows at 16kHz = 1600 samples = 3200 bytes (Int16)
         window_bytes = self._sample_rate * 2 // 10  # 0.1s of Int16 mono
         silence_chunks_limit = int(self._silence_duration / 0.1)
-        warmup_chunks_limit = int(3.0 / 0.1)  # 3s warmup
+        warmup_chunks_limit = int(self._warmup_duration / 0.1)
         max_chunks = int(self._max_duration / 0.1)
+        min_speech_chunks = int(self._min_speech_duration / 0.1)
 
         partial = b""
         chunk_count = 0
@@ -96,17 +102,29 @@ class BrowserTransport(Transport):
                         if rms > self._silence_threshold:
                             speech_started = True
                             chunks.append(window)
+                            speech_chunks = 1
                         elif chunk_count >= warmup_chunks_limit:
                             # No speech in warmup window
                             return b""
                     else:
                         chunks.append(window)
+                        if rms >= self._silence_threshold:
+                            speech_chunks += 1
+
                         if rms < self._silence_threshold:
                             consecutive_silence += 1
                         else:
                             consecutive_silence = 0
 
                         if consecutive_silence >= silence_chunks_limit:
+                            # Reject utterances shorter than minimum — likely noise
+                            if speech_chunks < min_speech_chunks:
+                                chunks.clear()
+                                speech_started = False
+                                consecutive_silence = 0
+                                speech_chunks = 0
+                                continue
+
                             # Flush any remaining partial buffer as a trailing chunk
                             if partial:
                                 samples_p = np.frombuffer(partial, dtype=np.int16).astype(np.float32)

@@ -7,44 +7,66 @@ import { StatusBar } from './StatusBar'
 
 interface VoiceAgentProps {
   connectionState: ConnectionState
+  sessionActive: boolean
   bots: Bot[]
   messages: ChatMessage[]
   metrics: Metrics | null
   error: string | null
   clearError: () => void
-  sendAudioChunk: (base64: string) => void
-  startListening: () => void
-  stopListening: () => void
+  initAudio: () => void
+  sendAudioChunk: (pcmData: ArrayBuffer) => void
+  startSession: () => void
+  stopSession: () => void
   selectBot: (id: string) => void
+  connect: () => void
+  disconnect: () => void
 }
 
 export function VoiceAgent({
   connectionState,
+  sessionActive,
   bots,
   messages,
   metrics,
   error,
   clearError,
+  initAudio,
   sendAudioChunk,
-  startListening,
-  stopListening,
+  startSession,
+  stopSession,
   selectBot,
+  connect,
+  disconnect,
 }: VoiceAgentProps) {
-  const { isRecording, startRecording, stopRecording } = useAudio(sendAudioChunk)
+  const { isRecording, startRecording, stopRecording } = useAudio({
+    onChunk: sendAudioChunk,
+  })
 
   const handleStart = useCallback(async () => {
     try {
+      // initAudio MUST run first — we are inside a click handler (user gesture).
+      // This unlocks AudioContext playback for TTS audio received later.
+      initAudio()
+      // Connect WS if not already connected
+      if (connectionState !== 'connected') {
+        connect()
+        await new Promise((r) => setTimeout(r, 500))
+      }
+      // Tell backend to start the conversation session BEFORE mic streaming,
+      // so the backend is ready to receive audio_chunk messages. Without this
+      // ordering, the backend drops all chunks that arrive before
+      // conversation_task is created (api.py:199).
+      startSession()
       await startRecording()
-      startListening()
-    } catch {
-      // Error handled by useAudio
+    } catch (err) {
+      console.error('[VoiceAgent] Failed to start:', err)
     }
-  }, [startRecording, startListening])
+  }, [connectionState, connect, initAudio, startRecording, startSession])
 
   const handleStop = useCallback(() => {
     stopRecording()
-    stopListening()
-  }, [stopRecording, stopListening])
+    stopSession()
+  }, [stopRecording, stopSession])
 
   const selectedBot = bots.find((b) => b.enabled)?.id || 'healthcare'
 
@@ -73,7 +95,7 @@ export function VoiceAgent({
       <div className="chat-area">
         {messages.length === 0 && (
           <div className="chat-empty">
-            Press Start Listening and speak to the Healthcare bot.
+            Press Start Conversation and speak to the Healthcare bot.
           </div>
         )}
         {messages.map((msg) => (
@@ -88,16 +110,16 @@ export function VoiceAgent({
         <button
           className="btn btn-start"
           onClick={handleStart}
-          disabled={isRecording || connectionState !== 'connected'}
+          disabled={sessionActive}
         >
-          🎤 Start Listening
+          Start Conversation
         </button>
         <button
           className="btn btn-stop"
           onClick={handleStop}
-          disabled={!isRecording}
+          disabled={!sessionActive}
         >
-          ⏹ Stop Listening
+          Stop Conversation
         </button>
       </div>
 

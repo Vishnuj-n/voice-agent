@@ -166,60 +166,72 @@ async def websocket_endpoint(ws: WebSocket):
 
     try:
         while True:
-            raw = await ws.receive_text()
-            msg = json.loads(raw)
-            msg_type = msg.get("type")
-            logger.info(f"Received message: {msg_type}")
+            raw = await ws.receive()
+            msg_type_bin = raw.get("type")
 
-            if msg_type == "select_bot":
-                bot_id = msg.get("bot", "healthcare")
-                if bot_id in BOT_AGENTS:
-                    current_bot = bot_id
-                    pipeline._agent = BOT_AGENTS[bot_id]
-                    await ws.send_json({"type": "status", "state": "connected"})
-
-            elif msg_type == "start_session":
-                # Start a continuous voice conversation
-                if conversation_task and not conversation_task.done():
-                    logger.warning("Session already active, ignoring start_session")
+            if msg_type_bin == "websocket.receive":
+                # Binary frame = raw PCM Int16 audio from the browser
+                if "bytes" in raw and raw["bytes"] is not None:
+                    if conversation_task and not conversation_task.done():
+                        await transport.feed_audio(raw["bytes"])
                     continue
 
-                # Drain any stale audio from previous session
-                while not transport._audio_buffer.empty():
-                    try:
-                        transport._audio_buffer.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
+                # Text frame = JSON control message
+                text = raw.get("text")
+                if not text:
+                    continue
+                msg = json.loads(text)
+                msg_type = msg.get("type")
+                logger.info(f"Received message: {msg_type}")
 
-                pipeline.reset_cancel()
-                conversation_task = asyncio.create_task(conversation_loop())
-                await ws.send_json({"type": "status", "state": "listening"})
-                logger.info("Session started")
+                if msg_type == "select_bot":
+                    bot_id = msg.get("bot", "healthcare")
+                    if bot_id in BOT_AGENTS:
+                        current_bot = bot_id
+                        pipeline._agent = BOT_AGENTS[bot_id]
+                        await ws.send_json({"type": "status", "state": "connected"})
 
-            elif msg_type == "audio_chunk" and conversation_task and not conversation_task.done():
-                audio_b64 = msg.get("data", "")
-                if audio_b64:
-                    audio_bytes = base64.b64decode(audio_b64)
-                    await transport.feed_audio(audio_bytes)
+                elif msg_type == "start_session":
+                    if conversation_task and not conversation_task.done():
+                        logger.warning("Session already active, ignoring start_session")
+                        continue
 
-            elif msg_type == "stop_session":
-                # Stop the entire conversation session
-                logger.info("Stopping session...")
-                session_active = False
-                pipeline.cancel()
+                    while not transport._audio_buffer.empty():
+                        try:
+                            transport._audio_buffer.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
 
-                if conversation_task and not conversation_task.done():
-                    conversation_task.cancel()
-                    try:
-                        await conversation_task
-                    except asyncio.CancelledError:
-                        pass
-                    conversation_task = None
+                    pipeline.reset_cancel()
+                    conversation_task = asyncio.create_task(conversation_loop())
+                    await ws.send_json({"type": "status", "state": "listening"})
+                    logger.info("Session started")
 
-                await transport.stop()
-                transport.set_websocket(ws)
-                await ws.send_json({"type": "status", "state": "connected"})
-                logger.info("Session stopped")
+                elif msg_type == "audio_chunk":
+                    # Backward-compat: base64 JSON fallback (legacy clients)
+                    if conversation_task and not conversation_task.done():
+                        audio_b64 = msg.get("data", "")
+                        if audio_b64:
+                            audio_bytes = base64.b64decode(audio_b64)
+                            await transport.feed_audio(audio_bytes)
+
+                elif msg_type == "stop_session":
+                    logger.info("Stopping session...")
+                    session_active = False
+                    pipeline.cancel()
+
+                    if conversation_task and not conversation_task.done():
+                        conversation_task.cancel()
+                        try:
+                            await conversation_task
+                        except asyncio.CancelledError:
+                            pass
+                        conversation_task = None
+
+                    await transport.stop()
+                    transport.set_websocket(ws)
+                    await ws.send_json({"type": "status", "state": "connected"})
+                    logger.info("Session stopped")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")

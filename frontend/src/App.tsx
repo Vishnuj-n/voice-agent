@@ -33,15 +33,19 @@ function App() {
         {activeTab === 'voice' ? (
           <VoiceAgent
             connectionState={ws.connectionState}
+            sessionActive={ws.sessionActive}
             bots={ws.bots}
             messages={ws.messages}
             metrics={ws.metrics}
             error={ws.error}
             clearError={ws.clearError}
+            initAudio={ws.initAudio}
             sendAudioChunk={ws.sendAudioChunk}
-            startListening={ws.startListening}
-            stopListening={ws.stopListening}
+            startSession={ws.startSession}
+            stopSession={ws.stopSession}
             selectBot={ws.selectBot}
+            connect={ws.connect}
+            disconnect={ws.disconnect}
           />
         ) : (
           <Architecture />
