@@ -1,88 +1,69 @@
-import asyncio
-import time
+import os
 
+import asyncio
 from providers.base import Transport, STTProvider, TTSProvider
 from providers.registry import get_stt_provider, get_tts_provider
 from bots.healthcare import agent
-
-FALLBACK_MSG = "Sorry, I encountered an issue. Please try again."
+from core.pipeline import StreamingPipeline, TurnResult
 
 async def run_one_turn(
+    pipeline: StreamingPipeline,
     transport: Transport,
     stt: STTProvider,
-    tts: TTSProvider,
 ) -> bool:
     """Run one voice turn. Returns False if the user wants to quit."""
-    t0 = time.perf_counter()
-
     # 1. Record
     try:
         audio = await transport.read_audio()
     except Exception as e:
         print(f"  [mic error] {e}")
         return True
-    t_rec = time.perf_counter()
 
-    # 2. STT
+    # 2. STT (outside the pipeline)
     try:
         text = await stt.transcribe(audio)
     except Exception as e:
         print(f"  [stt error] {e}")
         return True
-    t_stt = time.perf_counter()
 
-    # Print transcript for dev visibility
     print(f"  You: {text}")
 
-    # Quit command
-    if text.strip().lower() in ("quit", "exit", "stop"):
+    # to quit the bot, the user can say "bot stop", "bot quit", or "bot exit"
+    if wants_to_exit(text):
         return False
 
     if not text.strip():
         print("  (empty transcription, skipping)")
         return True
 
-    # 3. LLM
+    # 3. Streaming turn (LLM + TTS + playback)
     try:
-        result = await agent.run(text)
-        response = result.output
+        result = await pipeline.run_turn(text)
     except Exception as e:
-        print(f"  [llm error] {e}")
-        response = FALLBACK_MSG
-    t_llm = time.perf_counter()
-
-    # Print response for dev visibility
-    print(f"  Bot: {response}")
-
-    # 4. TTS (non-streaming; streaming in Sprint 3)
-    try:
-        audio_out = await tts.generate_speech(response)
-    except Exception as e:
-        print(f"  [tts error] {e}")
-        return True
-    t_tts = time.perf_counter()
-
-    # 5. Play
-    try:
-        played = await transport.write_audio(audio_out)
-        if not played:
-            print("  [speaker error] Playback failed, no audio delivered to user.")
-            return True
-    except Exception as e:
-        print(f"  [speaker error] {e}")
+        print(f"  [pipeline error] {e}")
         return True
 
-    # Timing report (AI pipeline = STT + LLM + TTS)
-    ai_ms = (t_tts - t_rec) * 1000
-    total_ms = (time.perf_counter() - t0) * 1000
-    print(f"  Timing — STT: {(t_stt-t_rec)*1000:.0f}ms | LLM: {(t_llm-t_stt)*1000:.0f}ms | TTS: {(t_tts-t_llm)*1000:.0f}ms")
-    print(f"  AI pipeline: {ai_ms:.0f}ms | Total (incl. recording): {total_ms:.0f}ms")
+    print(f"  Bot: {result.full_text}")
+    print(
+        f"  Timing — LLM: {result.llm_total_ms:.0f}ms "
+        f"(first token: {result.llm_time_to_first_token_ms:.0f}ms) | "
+        f"TTS first audio: {result.tts_time_to_first_audio_ms:.0f}ms | "
+        f"Total: {result.total_ms:.0f}ms"
+    )
     return True
 
+
+def wants_to_exit(text: str) -> bool:
+    text = text.strip().lower()
+
+    return text.startswith((
+        "bot stop",
+        "bot quit",
+        "bot exit",
+    ))
 async def main():
     from core.transport import LocalTransport
 
-    # Initialize once — providers create SDK clients; reuse across turns
     try:
         transport = LocalTransport()
         stt = get_stt_provider()
@@ -91,10 +72,16 @@ async def main():
         print(f"Failed to initialize providers: {e}")
         return
 
+    pipeline = StreamingPipeline(
+        bot_agent=agent,
+        transport=transport,
+        tts=tts,
+    )
+
     await transport.start()
     try:
-        print("Healthcare Bot — say 'quit' to exit")
-        while await run_one_turn(transport, stt, tts):
+        print("Healthcare Bot — say 'bot stop' to exit")
+        while await run_one_turn(pipeline, transport, stt):
             pass
     except asyncio.CancelledError:
         pass

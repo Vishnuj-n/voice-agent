@@ -1,9 +1,10 @@
 import io
 import wave
 import asyncio
+from typing import AsyncIterator
 import numpy as np
 import sounddevice as sd
-from providers.base import Transport
+from providers.base import Transport, AudioFormat
 
 class LocalTransport(Transport):
     def __init__(self, silence_threshold: float = 300.0, silence_duration: float = 1.5, max_duration: float = 10.0, samplerate: int = 16000):
@@ -124,3 +125,22 @@ class LocalTransport(Transport):
         except Exception as e:
             print(f"Error in playback: {e}")
             return False
+
+    async def play_stream(
+        self,
+        audio_chunks: AsyncIterator[bytes],
+        audio_format: AudioFormat,
+    ) -> None:
+        """Stream raw PCM chunks to the speaker as they arrive.
+
+        Opens a RawOutputStream and writes each chunk immediately,
+        so audio playback begins as soon as the first chunk is available.
+        Blocks (awaits) until the stream is exhausted.
+        """
+        with sd.RawOutputStream(
+            samplerate=audio_format.sample_rate,
+            channels=audio_format.num_channels,
+            dtype=audio_format.dtype,
+        ) as stream:
+            async for chunk in audio_chunks:
+                await asyncio.to_thread(stream.write, chunk)

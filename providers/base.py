@@ -1,6 +1,15 @@
+import dataclasses
 from abc import ABC, abstractmethod
 from typing import AsyncIterator
 from pydantic_ai.models import Model
+
+
+@dataclasses.dataclass(frozen=True)
+class AudioFormat:
+    """Stream-wide audio format descriptor. Passed once per stream, not per frame."""
+    sample_rate: int
+    num_channels: int
+    dtype: str  # numpy dtype name: "float32", "int16", etc.
 
 
 class Transport(ABC):
@@ -26,6 +35,21 @@ class Transport(ABC):
         """Write audio output (e.g., to speaker). Returns True on success."""
         pass
 
+    @abstractmethod
+    async def play_stream(
+        self,
+        audio_chunks: AsyncIterator[bytes],
+        audio_format: AudioFormat,
+    ) -> None:
+        """Consume a stream of raw PCM byte chunks and play them to the output device.
+
+        The transport owns all buffering, device management, and shutdown.
+        Blocks (awaits) until the stream ends or playback is interrupted.
+        The transport is the only component that may depend on audio playback
+        libraries (e.g., sounddevice).
+        """
+        pass
+
 
 class STTProvider(ABC):
     """Abstract base class representing a Speech-to-Text provider."""
@@ -43,6 +67,16 @@ class STTProvider(ABC):
 
 class TTSProvider(ABC):
     """Abstract base class representing a Text-to-Speech provider."""
+
+    @property
+    @abstractmethod
+    def audio_format(self) -> AudioFormat:
+        """Return the audio format of this provider's streaming output.
+
+        Used by StreamingPipeline to construct AudioFrames and by
+        Transport.play_stream() to configure the output device.
+        """
+        pass
 
     @abstractmethod
     async def generate_speech(self, text: str) -> bytes:
