@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # --- Bot ---
     default_bot: str = "healthcare"
 
+    # --- CORS ---
+    web_origin: str = "http://localhost:3000"
+
     @property
     def provider_llm(self) -> str:
         return f"groq:{self.groq_llm_model}"

@@ -18,12 +18,13 @@ from core.browser_transport import BrowserTransport
 from core.pipeline import StreamingPipeline, PipelineCallbacks
 from providers.registry import get_stt_provider, get_tts_provider
 from bots.healthcare import agent as healthcare_agent
+from config import load_config
 
 app = FastAPI(title="Voice Agent API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[load_config().web_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
