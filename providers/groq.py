@@ -44,6 +44,7 @@ class GroqWhisperSTT(STTProvider):
             file=audio_file,
             model=self.model,
             response_format="json",
+            language="en",
         )
         return response.text
 

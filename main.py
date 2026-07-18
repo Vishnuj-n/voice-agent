@@ -1,15 +1,13 @@
-import os
-
 import asyncio
-from providers.base import Transport, STTProvider, TTSProvider
+from providers.base import Transport
 from providers.registry import get_stt_provider, get_tts_provider
 from bots.healthcare import agent
 from core.pipeline import StreamingPipeline, TurnResult
 
+
 async def run_one_turn(
     pipeline: StreamingPipeline,
     transport: Transport,
-    stt: STTProvider,
 ) -> bool:
     """Run one voice turn. Returns False if the user wants to quit."""
     # 1. Record
@@ -19,26 +17,9 @@ async def run_one_turn(
         print(f"  [mic error] {e}")
         return True
 
-    # 2. STT (outside the pipeline)
+    # 2. STT — delegated to pipeline via run_audio_turn
     try:
-        text = await stt.transcribe(audio)
-    except Exception as e:
-        print(f"  [stt error] {e}")
-        return True
-
-    print(f"  You: {text}")
-
-    # to quit the bot, the user can say "bot stop", "bot quit", or "bot exit"
-    if wants_to_exit(text):
-        return False
-
-    if not text.strip():
-        print("  (empty transcription, skipping)")
-        return True
-
-    # 3. Streaming turn (LLM + TTS + playback)
-    try:
-        result = await pipeline.run_turn(text)
+        result = await pipeline.run_audio_turn(audio)
     except Exception as e:
         print(f"  [pipeline error] {e}")
         return True
@@ -50,17 +31,22 @@ async def run_one_turn(
         f"TTS first audio: {result.tts_time_to_first_audio_ms:.0f}ms | "
         f"Total: {result.total_ms:.0f}ms"
     )
+
+    if wants_to_exit(result.full_text):
+        return False
+
     return True
 
 
 def wants_to_exit(text: str) -> bool:
     text = text.strip().lower()
-
     return text.startswith((
         "bot stop",
         "bot quit",
         "bot exit",
     ))
+
+
 async def main():
     from core.transport import LocalTransport
 
@@ -76,17 +62,19 @@ async def main():
         bot_agent=agent,
         transport=transport,
         tts=tts,
+        stt=stt,
     )
 
     await transport.start()
     try:
         print("Healthcare Bot — say 'bot stop' to exit")
-        while await run_one_turn(pipeline, transport, stt):
+        while await run_one_turn(pipeline, transport):
             pass
     except asyncio.CancelledError:
         pass
     finally:
         await transport.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
