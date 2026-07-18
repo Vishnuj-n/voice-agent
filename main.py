@@ -2,7 +2,7 @@ import asyncio
 from providers.base import Transport
 from providers.registry import get_stt_provider, get_tts_provider
 from bots.healthcare import agent
-from core.pipeline import StreamingPipeline, TurnResult
+from core.pipeline import StreamingPipeline
 
 
 async def run_one_turn(
@@ -40,11 +40,13 @@ async def run_one_turn(
 
 def wants_to_exit(text: str) -> bool:
     text = text.strip().lower()
-    return text.startswith((
-        "bot stop",
-        "bot quit",
-        "bot exit",
-    ))
+    return text.startswith(
+        (
+            "bot stop",
+            "bot quit",
+            "bot exit",
+        )
+    )
 
 
 async def main():

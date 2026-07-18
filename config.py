@@ -19,12 +19,12 @@ class Settings(BaseSettings):
     )
 
     # --- Groq (LLM + STT) ---
-    groq_api_key: str 
+    groq_api_key: str
     groq_llm_model: str = "llama-3.3-70b-versatile"
     groq_stt_model: str = "whisper-large-v3-turbo"
 
     # --- Cartesia (TTS) ---
-    cartesia_api_key: str 
+    cartesia_api_key: str
     cartesia_voice_id: str
     cartesia_model_id: str = "sonic-3.5"
 

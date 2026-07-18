@@ -96,7 +96,7 @@ class BrowserTransport(Transport):
 
                     # Compute RMS energy over the Int16 window
                     samples = np.frombuffer(window, dtype=np.int16).astype(np.float32)
-                    rms = float(np.sqrt(np.mean(samples ** 2)))
+                    rms = float(np.sqrt(np.mean(samples**2)))
 
                     if not speech_started:
                         if rms > self._silence_threshold:
@@ -127,8 +127,10 @@ class BrowserTransport(Transport):
 
                             # Flush any remaining partial buffer as a trailing chunk
                             if partial:
-                                samples_p = np.frombuffer(partial, dtype=np.int16).astype(np.float32)
-                                rms_p = float(np.sqrt(np.mean(samples_p ** 2)))
+                                samples_p = np.frombuffer(
+                                    partial, dtype=np.int16
+                                ).astype(np.float32)
+                                rms_p = float(np.sqrt(np.mean(samples_p**2)))
                                 if rms_p >= self._silence_threshold * 0.5:
                                     chunks.append(partial)
                             return self._wrap_wav(b"".join(chunks))
@@ -172,23 +174,27 @@ class BrowserTransport(Transport):
 
         # Send audio_start header
         if self._ws:
-            await self._ws.send_json({
-                "type": "audio_start",
-                "format": {
-                    "sample_rate": audio_format.sample_rate,
-                    "channels": audio_format.num_channels,
-                    "encoding": audio_format.dtype,
-                },
-            })
+            await self._ws.send_json(
+                {
+                    "type": "audio_start",
+                    "format": {
+                        "sample_rate": audio_format.sample_rate,
+                        "channels": audio_format.num_channels,
+                        "encoding": audio_format.dtype,
+                    },
+                }
+            )
 
         # Stream audio chunks
         async for chunk in audio_chunks:
             if self._ws:
                 encoded = base64.b64encode(chunk).decode("ascii")
-                await self._ws.send_json({
-                    "type": "audio_chunk",
-                    "data": encoded,
-                })
+                await self._ws.send_json(
+                    {
+                        "type": "audio_chunk",
+                        "data": encoded,
+                    }
+                )
 
         # Signal end of audio stream
         if self._ws:

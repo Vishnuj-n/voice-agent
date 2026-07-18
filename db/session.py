@@ -3,7 +3,6 @@ from __future__ import annotations
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from pgvector.sqlalchemy import Vector
 
 from config import load_config
 

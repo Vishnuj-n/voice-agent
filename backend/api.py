@@ -116,37 +116,51 @@ async def websocket_endpoint(ws: WebSocket):
                     # STT timing is handled inside pipeline, but we also
                     # track it here for the transcript message timestamp
                     logger.info(f"Transcript: {text}")
-                    await ws.send_json({
-                        "type": "transcript",
-                        "text": text,
-                        "speaker": "user",
-                    })
+                    await ws.send_json(
+                        {
+                            "type": "transcript",
+                            "text": text,
+                            "speaker": "user",
+                        }
+                    )
 
                 callbacks = PipelineCallbacks(
                     on_transcript=on_transcript,
-                    on_text_delta=lambda token: ws.send_json({
-                        "type": "response_text",
-                        "text": token,
-                    }),
-                    on_status=lambda state: ws.send_json({
-                        "type": "status",
-                        "state": state,
-                    }),
+                    on_text_delta=lambda token: ws.send_json(
+                        {
+                            "type": "response_text",
+                            "text": token,
+                        }
+                    ),
+                    on_status=lambda state: ws.send_json(
+                        {
+                            "type": "status",
+                            "state": state,
+                        }
+                    ),
                 )
 
                 try:
-                    result = await pipeline.run_audio_turn(audio=audio, callbacks=callbacks)
+                    result = await pipeline.run_audio_turn(
+                        audio=audio, callbacks=callbacks
+                    )
                     logger.info(f"Pipeline complete: total={round(result.total_ms)}ms")
 
-                    await ws.send_json({
-                        "type": "metrics",
-                        "stt_ms": round(result.stt_ms),
-                        "llm_total_ms": round(result.llm_total_ms),
-                        "llm_time_to_first_token_ms": round(result.llm_time_to_first_token_ms),
-                        "tts_time_to_first_audio_ms": round(result.tts_time_to_first_audio_ms),
-                        "tts_total_ms": round(result.tts_total_ms),
-                        "total_ms": round(result.total_ms),
-                    })
+                    await ws.send_json(
+                        {
+                            "type": "metrics",
+                            "stt_ms": round(result.stt_ms),
+                            "llm_total_ms": round(result.llm_total_ms),
+                            "llm_time_to_first_token_ms": round(
+                                result.llm_time_to_first_token_ms
+                            ),
+                            "tts_time_to_first_audio_ms": round(
+                                result.tts_time_to_first_audio_ms
+                            ),
+                            "tts_total_ms": round(result.tts_total_ms),
+                            "total_ms": round(result.total_ms),
+                        }
+                    )
 
                     if session_active:
                         await ws.send_json({"type": "status", "state": "listening"})
@@ -155,7 +169,9 @@ async def websocket_endpoint(ws: WebSocket):
                     break
                 except Exception as e:
                     logger.error(f"Pipeline error: {e}", exc_info=True)
-                    await ws.send_json({"type": "error", "message": f"Pipeline error: {e}"})
+                    await ws.send_json(
+                        {"type": "error", "message": f"Pipeline error: {e}"}
+                    )
                     if session_active:
                         await ws.send_json({"type": "status", "state": "listening"})
 

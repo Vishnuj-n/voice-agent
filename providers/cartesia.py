@@ -36,13 +36,19 @@ class CartesiaTTS(TTSProvider):
         )
         return await response.read()
 
-    async def generate_speech_stream(self, text_stream: AsyncIterator[str]) -> AsyncIterator[bytes]:
+    async def generate_speech_stream(
+        self, text_stream: AsyncIterator[str]
+    ) -> AsyncIterator[bytes]:
         """Stream text chunks to Cartesia via WebSocket and yield synthesised audio chunks concurrently."""
         async with self.client.tts.websocket_connect() as connection:
             ctx = connection.context(
                 model_id=self.model_id,
                 voice={"mode": "id", "id": self.voice_id},
-                output_format={"container": "raw", "sample_rate": 44100, "encoding": "pcm_f32le"},
+                output_format={
+                    "container": "raw",
+                    "sample_rate": 44100,
+                    "encoding": "pcm_f32le",
+                },
             )
 
             async def sender():
@@ -59,7 +65,9 @@ class CartesiaTTS(TTSProvider):
                     if output.type == "chunk":
                         yield output.audio
                     elif output.type == "error":
-                        raise RuntimeError(f"Cartesia WebSocket error: {output.message}")
+                        raise RuntimeError(
+                            f"Cartesia WebSocket error: {output.message}"
+                        )
 
             send_task = asyncio.create_task(sender())
             try:

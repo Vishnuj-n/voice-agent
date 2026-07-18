@@ -8,7 +8,9 @@ import wave
 from providers.registry import get_stt_provider
 
 
-def generate_dummy_wav(filepath: str, duration_sec: float = 1.0, sample_rate: int = 16000):
+def generate_dummy_wav(
+    filepath: str, duration_sec: float = 1.0, sample_rate: int = 16000
+):
     """Generate a simple 16kHz mono 16-bit PCM WAV file with a tone beep."""
     with wave.open(filepath, "wb") as wav_file:
         wav_file.setnchannels(1)  # Mono
@@ -30,7 +32,9 @@ async def main():
         is_dummy = False
     else:
         wav_path = "sample.wav"
-        print(f"No audio file provided. Generating a dummy 1s WAV beep file at: {wav_path}")
+        print(
+            f"No audio file provided. Generating a dummy 1s WAV beep file at: {wav_path}"
+        )
         generate_dummy_wav(wav_path)
         is_dummy = True
 

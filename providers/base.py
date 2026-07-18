@@ -7,6 +7,7 @@ from pydantic_ai.models import Model
 @dataclasses.dataclass(frozen=True)
 class AudioFormat:
     """Stream-wide audio format descriptor. Passed once per stream, not per frame."""
+
     sample_rate: int
     num_channels: int
     dtype: str  # numpy dtype name: "float32", "int16", etc.
@@ -89,7 +90,9 @@ class TTSProvider(ABC):
         pass
 
     @abstractmethod
-    async def generate_speech_stream(self, text_stream: AsyncIterator[str]) -> AsyncIterator[bytes]:
+    async def generate_speech_stream(
+        self, text_stream: AsyncIterator[str]
+    ) -> AsyncIterator[bytes]:
         """
         Synthesize a stream of text chunks into a stream of audio bytes.
 

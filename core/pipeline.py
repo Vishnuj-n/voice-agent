@@ -1,7 +1,7 @@
 import asyncio
 import time
 import dataclasses
-from typing import AsyncIterator, Callable, Awaitable
+from typing import Callable, Awaitable
 
 
 @dataclasses.dataclass
@@ -12,6 +12,7 @@ class TextChunker:
     clause boundary (`,`, `;`, `:`), or the max buffer length is reached.
     Remaining buffered text is always flushed when streaming ends via flush().
     """
+
     _max_buffer: int = 200
     _buffer: str = ""
 
@@ -54,6 +55,7 @@ class TextChunker:
 @dataclasses.dataclass
 class TurnResult:
     """Result of a single streaming turn."""
+
     full_text: str
     stt_ms: float
     llm_total_ms: float
@@ -70,6 +72,7 @@ class PipelineCallbacks:
     All fields default to None. The pipeline only fires callbacks that are set.
     CLI callers pass no callbacks; the web layer provides them for WebSocket forwarding.
     """
+
     on_transcript: Callable[[str], Awaitable[None]] | None = None
     on_text_delta: Callable[[str], Awaitable[None]] | None = None
     on_status: Callable[[str], Awaitable[None]] | None = None
@@ -173,6 +176,7 @@ class StreamingPipeline:
             exc = task.exception()
             if exc is not None:
                 import logging
+
                 logging.getLogger("voice-agent").error(
                     f"Callback task error: {exc}", exc_info=exc
                 )
@@ -189,9 +193,13 @@ class StreamingPipeline:
 
         if self._cancel_event.is_set():
             return TurnResult(
-                full_text="", stt_ms=stt_ms, llm_total_ms=0.0,
-                llm_time_to_first_token_ms=0.0, tts_total_ms=0.0,
-                tts_time_to_first_audio_ms=0.0, total_ms=(time.perf_counter() - t0) * 1000,
+                full_text="",
+                stt_ms=stt_ms,
+                llm_total_ms=0.0,
+                llm_time_to_first_token_ms=0.0,
+                tts_total_ms=0.0,
+                tts_time_to_first_audio_ms=0.0,
+                total_ms=(time.perf_counter() - t0) * 1000,
             )
 
         # 2. Open the PydanticAI streaming response
@@ -231,7 +239,9 @@ class StreamingPipeline:
                             yield chunk
 
                 try:
-                    async for audio_bytes in self._tts.generate_speech_stream(text_gen()):
+                    async for audio_bytes in self._tts.generate_speech_stream(
+                        text_gen()
+                    ):
                         if self._cancel_event.is_set():
                             break
                         if t_first_audio is None:
