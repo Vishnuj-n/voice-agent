@@ -20,3 +20,12 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "websockets>=14.0",
 ]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.9",
+    "deptry>=0.25.1",
+    "pip-audit>=2.10.1",
+    "ruff>=0.15.22",
+    "vulture>=2.16",
+]
