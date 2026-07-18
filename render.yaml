@@ -7,14 +7,12 @@ services:
     runtime: python
     plan: free
 
-    rootDir: backend
-
     buildCommand: |
       pip install uv
       uv sync
 
     startCommand: |
-      uv run uvicorn api:app --host 0.0.0.0 --port $PORT
+      uv run uvicorn backend.api:app --host 0.0.0.0 --port $PORT
 
     envVars:
       - key: PYTHON_VERSION
@@ -38,7 +36,6 @@ services:
   - type: web
     name: voice-agent-web
     runtime: static
-    plan: free
 
     rootDir: frontend
 
