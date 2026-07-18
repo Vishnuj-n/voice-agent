@@ -27,8 +27,26 @@ services:
       - key: CARTESIA_API_KEY
         sync: false
 
+      - key: CARTESIA_VOICE_ID
+        sync: false
+
       - key: OPENAI_API_KEY
         sync: false
+
+      - key: GROQ_LLM_MODEL
+        value: llama-3.3-70b-versatile
+
+      - key: GROQ_STT_MODEL
+        value: whisper-large-v3-turbo
+
+      - key: CARTESIA_MODEL_ID
+        value: sonic-3.5
+
+      - key: OPENAI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+
+      - key: DEFAULT_BOT
+        value: healthcare
 
   #
   # Frontend
