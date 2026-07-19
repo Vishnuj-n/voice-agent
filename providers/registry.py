@@ -1,7 +1,8 @@
 from config import get_provider_string
-from providers.base import LLMProvider, STTProvider, TTSProvider
+from providers.base import LLMProvider, STTProvider, TTSProvider, EmbeddingProvider
 from providers.cartesia import CartesiaTTS
 from providers.groq import GroqLLM, GroqWhisperSTT
+from providers.openai import OpenAIEmbeddingProvider
 
 
 def get_stt_provider() -> STTProvider:
@@ -53,3 +54,21 @@ def get_llm_provider() -> LLMProvider:
         return GroqLLM(model=model)
     else:
         raise ValueError(f"Unsupported LLM provider: {provider_type}")
+
+
+def get_embedding_provider() -> EmbeddingProvider:
+    """Instantiate and return the Embedding provider configured in Settings.
+
+    Provider strings follow the format: provider:model
+    Example: openai:text-embedding-3-small
+    """
+    provider_str = get_provider_string("embedding")
+    parts = provider_str.split(":", 1)
+    provider_type = parts[0]
+    model = parts[1] if len(parts) > 1 else None
+
+    if provider_type == "openai":
+        return OpenAIEmbeddingProvider(model=model)
+    else:
+        raise ValueError(f"Unsupported Embedding provider: {provider_type}")
+

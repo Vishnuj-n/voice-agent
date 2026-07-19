@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 from core.browser_transport import BrowserTransport
 from core.pipeline import StreamingPipeline, PipelineCallbacks
 from providers.registry import get_stt_provider, get_tts_provider
-from bots.healthcare import agent as healthcare_agent
+from bots import BOT_REGISTRY
 from config import load_config
 
 app = FastAPI(title="Voice Agent API")
@@ -32,14 +32,11 @@ app.add_middleware(
 
 BOTS = [
     {"id": "healthcare", "name": "Healthcare", "enabled": True},
-    {"id": "travel", "name": "Travel", "enabled": False},
-    {"id": "finance", "name": "Finance", "enabled": False},
-    {"id": "legal", "name": "Legal", "enabled": False},
+    {"id": "travel", "name": "Travel", "enabled": True},
+    {"id": "finance", "name": "Finance", "enabled": True},
+    {"id": "legal", "name": "Legal", "enabled": True},
 ]
 
-BOT_AGENTS = {
-    "healthcare": healthcare_agent,
-}
 
 
 @app.get("/health")
@@ -65,14 +62,18 @@ async def websocket_endpoint(ws: WebSocket):
         await ws.close()
         return
 
+    cfg = load_config()
+    default_bot = cfg.default_bot
+    default_agent = BOT_REGISTRY.get(default_bot, BOT_REGISTRY["healthcare"])
+
     pipeline = StreamingPipeline(
-        bot_agent=healthcare_agent,
+        bot_agent=default_agent,
         transport=transport,
         tts=tts,
         stt=stt,
     )
 
-    current_bot = "healthcare"
+    current_bot = default_bot
     conversation_task: asyncio.Task | None = None
     session_active = False
 
@@ -203,9 +204,9 @@ async def websocket_endpoint(ws: WebSocket):
 
                 if msg_type == "select_bot":
                     bot_id = msg.get("bot", "healthcare")
-                    if bot_id in BOT_AGENTS:
+                    if bot_id in BOT_REGISTRY:
                         current_bot = bot_id
-                        pipeline._agent = BOT_AGENTS[bot_id]
+                        pipeline._agent = BOT_REGISTRY[bot_id]
                         await ws.send_json({"type": "status", "state": "connected"})
 
                 elif msg_type == "start_session":

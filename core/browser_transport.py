@@ -20,11 +20,11 @@ class BrowserTransport(Transport):
 
     def __init__(
         self,
-        silence_threshold: float = 300.0,
-        silence_duration: float = 1.0,
+        silence_threshold: float = 200.0,
+        silence_duration: float = 2.0,
         max_duration: float = 30.0,
         min_speech_duration: float = 0.3,
-        warmup_duration: float = 1.0,
+        warmup_duration: float = 1.5,
         sample_rate: int = 16000,
     ):
         self._ws = None

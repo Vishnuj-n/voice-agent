@@ -61,8 +61,11 @@ def get_engine():
 
     if _engine is None:
         cfg = load_config()
+        db_url = cfg.database_url
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
         _engine = create_engine(
-            cfg.database_url,
+            db_url,
             # Validates pooled connections before reuse.
             pool_pre_ping=True,
         )
