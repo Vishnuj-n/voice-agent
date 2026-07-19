@@ -24,7 +24,16 @@ export function useWebSocket() {
   const connect = useCallback(() => {
     const existing = wsRef.current
     if (existing) {
-      if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) return
+      if (existing.readyState === WebSocket.OPEN) return Promise.resolve(existing)
+      if (existing.readyState === WebSocket.CONNECTING) {
+        return new Promise<WebSocket>((resolve) => {
+          const check = () => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) resolve(wsRef.current)
+            else setTimeout(check, 50)
+          }
+          check()
+        })
+      }
     }
 
     console.log('[WS] Connecting to', WS_URL)
@@ -122,6 +131,11 @@ export function useWebSocket() {
           break
       }
     }
+
+    return new Promise<WebSocket>((resolve) => {
+      ws.addEventListener('open', () => resolve(ws), { once: true })
+      ws.addEventListener('error', () => resolve(ws), { once: true })
+    })
   }, [])
 
   const disconnect = useCallback(() => {

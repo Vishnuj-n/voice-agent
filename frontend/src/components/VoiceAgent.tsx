@@ -49,8 +49,7 @@ export function VoiceAgent({
       initAudio()
       // Connect WS if not already connected
       if (connectionState !== 'connected') {
-        connect()
-        await new Promise((r) => setTimeout(r, 500))
+        await connect()
       }
       // Tell backend to start the conversation session BEFORE mic streaming,
       // so the backend is ready to receive audio_chunk messages. Without this
