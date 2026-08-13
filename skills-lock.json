@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "add-to-portfolio": {
+      "source": "Vishnuj-n/the-lazy-portfolio",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/add-to-portfolio/SKILL.md",
+      "computedHash": "d0715e535b857d513e79f207d660723ad4ac5e48c15c737b93e3bb8875aca714"
+    },
     "check": {
       "source": "tw93/Waza",
       "sourceType": "github",
