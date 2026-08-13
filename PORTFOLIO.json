@@ -1,0 +1,27 @@
+{
+  "title": "Voice AI Agent Framework",
+  "summary": "Real-time streaming voice agent framework built with FastAPI, React 19, and WebSockets. Integrates low-latency STT via Groq, TTS via Cartesia, vector RAG with PGVector and Jina AI, and domain-specialized PydanticAI bots for finance, healthcare, legal, travel, and Jira.",
+  "category": "Voice AI & RAG Infrastructure",
+  "date": "2026-07",
+  "tier": 1,
+  "priority": 85,
+  "techStack": [
+    "Python",
+    "FastAPI",
+    "React",
+    "TypeScript",
+    "WebSockets",
+    "Groq",
+    "Cartesia",
+    "PGVector",
+    "PydanticAI",
+    "Vite",
+    "SQLAlchemy"
+  ],
+  "highlights": [
+    "Real-time streaming audio pipeline integrating Groq STT and Cartesia TTS.",
+    "Domain-specialized PydanticAI agents for finance, healthcare, legal, travel, and Jira.",
+    "RAG vector retrieval pipeline powered by PGVector and Jina AI embeddings.",
+    "Full-duplex WebSocket browser transport with a React 19 frontend UI."
+  ]
+}
