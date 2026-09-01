@@ -105,7 +105,7 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS finance_docs (
                     id BIGSERIAL PRIMARY KEY,
                     content TEXT,
-                    embedding VECTOR(1536),
+                    embedding VECTOR,
                     metadata JSONB
                 )
             """)
@@ -116,7 +116,18 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS legal_docs (
                     id BIGSERIAL PRIMARY KEY,
                     content TEXT,
-                    embedding VECTOR(1536),
+                    embedding VECTOR,
+                    metadata JSONB
+                )
+            """)
+        )
+
+        conn.execute(
+            text("""
+                CREATE TABLE IF NOT EXISTS jira_docs (
+                    id BIGSERIAL PRIMARY KEY,
+                    content TEXT,
+                    embedding VECTOR,
                     metadata JSONB
                 )
             """)

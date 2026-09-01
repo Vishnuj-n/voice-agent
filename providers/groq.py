@@ -1,7 +1,6 @@
 import io
 import os
 from groq import AsyncGroq
-from pipecat.services.groq.stt import GroqSTTService
 from pydantic_ai.models import Model
 from pydantic_ai.models.groq import GroqModel
 
@@ -10,24 +9,18 @@ from providers.base import LLMProvider, STTProvider
 
 
 class GroqWhisperSTT(STTProvider):
-    """Groq Speech-to-Text provider utilizing the official Groq SDK and exposing a Pipecat service."""
+    """Groq Speech-to-Text provider utilizing the official Groq SDK."""
 
     def __init__(self, model: str | None = None):
         cfg = load_config()
         self.model = model or cfg.groq_stt_model
 
-        # Ensure environment variable is set for both raw SDK client and Pipecat service
+        # Ensure environment variable is set for Groq client
         if cfg.groq_api_key:
             os.environ["GROQ_API_KEY"] = cfg.groq_api_key
 
-        # Official client used for Sprint 1 / Sprint 2 direct calls
+        # Official client used for STT direct calls
         self.client = AsyncGroq(api_key=cfg.groq_api_key)
-
-        # Configured Pipecat service instance exposed for Sprint 3
-        self.service = GroqSTTService(
-            api_key=cfg.groq_api_key,
-            settings=GroqSTTService.Settings(model=self.model),
-        )
 
     async def transcribe(self, audio_data: bytes) -> str:
         """

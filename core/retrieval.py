@@ -1,18 +1,19 @@
 import psycopg
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import register_vector_async
 from config import load_config
 
 # Domain → table name. Single source of truth — ingestion imports from here.
 DOMAIN_TABLE_MAP = {
     "finance": "finance_docs",
     "legal": "legal_docs",
+    "jira": "jira_docs",
 }
 
 async def similarity_search(domain: str, query_embedding: list[float], k: int = 5) -> list[dict]:
     """Search for similar documents in the given domain's pgvector table.
 
     Args:
-        domain: "finance" or "legal" — maps to the correct table internally.
+        domain: "finance", "legal", or "jira" — maps to the correct table internally.
         query_embedding: The embedding vector to search against.
         k: Number of results to return.
 
@@ -29,7 +30,7 @@ async def similarity_search(domain: str, query_embedding: list[float], k: int = 
 
     cfg = load_config()
     async with await psycopg.AsyncConnection.connect(cfg.database_url) as conn:
-        register_vector(conn)
+        await register_vector_async(conn)
         rows = await conn.execute(
             f"SELECT content, metadata, embedding <=> %s::vector AS distance "
             f"FROM {table} ORDER BY distance LIMIT %s",

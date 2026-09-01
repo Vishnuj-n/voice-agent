@@ -1,5 +1,4 @@
-import psycopg
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import register_vector_async
 from datetime import datetime, timezone
 from pathlib import Path
 from config import load_config
@@ -42,22 +41,17 @@ def chunk_document(text: str, chunk_size: int = 500) -> list[str]:
     return chunks
 
 
-async def ingest_file(filepath: str, domain: str, embedding_provider: EmbeddingProvider) -> int:
-    """Read a text file, chunk it, embed chunks, and insert into the domain's pgvector table.
-
-    Args:
-        filepath: Path to the text file.
-        domain: "finance" or "legal".
-        embedding_provider: Provider to generate embeddings.
-
-    Returns:
-        Number of chunks ingested.
-    """
+async def ingest_text(
+    text: str,
+    domain: str,
+    source_name: str,
+    embedding_provider: EmbeddingProvider,
+) -> int:
+    """Chunk text, embed chunks, and insert into the domain's pgvector table."""
     table = DOMAIN_TABLE_MAP.get(domain)
     if table is None:
         raise ValueError(f"Unknown domain: {domain!r}. Supported: {list(DOMAIN_TABLE_MAP)}")
 
-    text = Path(filepath).read_text(encoding="utf-8")
     chunks = chunk_document(text)
     if not chunks:
         return 0
@@ -65,18 +59,39 @@ async def ingest_file(filepath: str, domain: str, embedding_provider: EmbeddingP
     embeddings = await embedding_provider.get_embeddings(chunks)
     now = datetime.now(timezone.utc).isoformat()
 
+    import psycopg
+
     cfg = load_config()
     async with await psycopg.AsyncConnection.connect(cfg.database_url) as conn:
-        register_vector(conn)
+        await register_vector_async(conn)
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             await conn.execute(
                 f"INSERT INTO {table} (content, embedding, metadata) VALUES (%s, %s::vector, %s::jsonb)",
-                (chunk, embedding, psycopg.types.json.Jsonb({
-                    "source": filepath,
-                    "chunk_index": i,
-                    "created_at": now,
-                })),
+                (
+                    chunk,
+                    embedding,
+                    psycopg.types.json.Jsonb(
+                        {
+                            "source": source_name,
+                            "chunk_index": i,
+                            "created_at": now,
+                        }
+                    ),
+                ),
             )
         await conn.commit()
 
     return len(chunks)
+
+
+async def ingest_file(
+    filepath: str, domain: str, embedding_provider: EmbeddingProvider
+) -> int:
+    """Read a text file and ingest into the domain's pgvector table."""
+    text = Path(filepath).read_text(encoding="utf-8")
+    return await ingest_text(
+        text=text,
+        domain=domain,
+        source_name=str(filepath),
+        embedding_provider=embedding_provider,
+    )
