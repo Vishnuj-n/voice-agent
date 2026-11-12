@@ -82,7 +82,8 @@ async def websocket_endpoint(ws: WebSocket):
 
     await ws.send_json({"type": "status", "state": "connected"})
     await ws.send_json({"type": "bots", "bots": BOTS})
-    logger.info("Sent initial status and bots list")
+    await ws.send_json({"type": "bot_selected", "bot": current_bot})
+    logger.info(f"Sent initial status, bots list, and active bot: {current_bot}")
 
     async def streaming_stt_loop():
         """Streaming STT session loop.
@@ -318,6 +319,8 @@ async def websocket_endpoint(ws: WebSocket):
                     if bot_id in BOT_REGISTRY:
                         current_bot = bot_id
                         pipeline._agent = BOT_REGISTRY[bot_id]
+                        logger.info(f"Switched active bot to: {current_bot}")
+                        await ws.send_json({"type": "bot_selected", "bot": current_bot})
                         await ws.send_json({"type": "status", "state": "connected"})
 
                 elif msg_type == "start_session":

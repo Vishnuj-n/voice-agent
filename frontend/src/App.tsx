@@ -35,6 +35,7 @@ function App() {
             connectionState={ws.connectionState}
             sessionActive={ws.sessionActive}
             bots={ws.bots}
+            selectedBot={ws.selectedBot}
             messages={ws.messages}
             metrics={ws.metrics}
             error={ws.error}

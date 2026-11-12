@@ -9,6 +9,7 @@ export function useWebSocket() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const [sessionActive, setSessionActive] = useState(false)
   const [bots, setBots] = useState<Bot[]>([])
+  const [selectedBot, setSelectedBot] = useState<string>('healthcare')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,6 +73,10 @@ export function useWebSocket() {
 
         case 'bots':
           setBots(msg.bots)
+          break
+
+        case 'bot_selected':
+          setSelectedBot(msg.bot)
           break
 
         case 'transcript':
@@ -210,6 +215,7 @@ export function useWebSocket() {
 
   const selectBot = useCallback(
     (botId: string) => {
+      setSelectedBot(botId)
       sendMessage({ type: 'select_bot', bot: botId })
     },
     [sendMessage]
@@ -221,6 +227,7 @@ export function useWebSocket() {
     connectionState,
     sessionActive,
     bots,
+    selectedBot,
     messages,
     metrics,
     error,

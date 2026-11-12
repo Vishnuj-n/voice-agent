@@ -9,6 +9,7 @@ interface VoiceAgentProps {
   connectionState: ConnectionState
   sessionActive: boolean
   bots: Bot[]
+  selectedBot: string
   messages: ChatMessage[]
   metrics: Metrics | null
   error: string | null
@@ -26,6 +27,7 @@ export function VoiceAgent({
   connectionState,
   sessionActive,
   bots,
+  selectedBot,
   messages,
   metrics,
   error,
@@ -67,7 +69,8 @@ export function VoiceAgent({
     stopSession()
   }, [stopRecording, stopSession])
 
-  const selectedBot = bots.find((b) => b.enabled)?.id || 'healthcare'
+  const activeBotObj = bots.find((b) => b.id === selectedBot)
+  const activeBotName = activeBotObj ? activeBotObj.name : 'Voice'
 
   return (
     <div className="voice-agent">
@@ -94,7 +97,7 @@ export function VoiceAgent({
       <div className="chat-area">
         {messages.length === 0 && (
           <div className="chat-empty">
-            Press Start Conversation and speak to the Healthcare bot.
+            Press Start Conversation and speak to the {activeBotName} bot.
           </div>
         )}
         {messages.map((msg) => (

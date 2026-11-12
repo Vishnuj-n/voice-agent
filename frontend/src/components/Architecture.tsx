@@ -60,6 +60,9 @@ export function Architecture() {
         <h2>Current Features</h2>
         <ul className="features-list">
           <li>Healthcare Bot</li>
+          <li>Travel Bot (Flight Search)</li>
+          <li>Finance Bot (RAG with pgvector)</li>
+          <li>Legal Bot (RAG with pgvector)</li>
           <li>Streaming Voice Pipeline</li>
           <li>Browser Transport</li>
           <li>WebSockets</li>
@@ -70,11 +73,9 @@ export function Architecture() {
       <section>
         <h2>Planned Features</h2>
         <ul className="planned-list">
-          <li>Travel Bot</li>
-          <li>Finance Bot</li>
-          <li>Legal Bot</li>
-          <li>RAG with pgvector</li>
           <li>Persistent Conversations</li>
+          <li>Telephony (Twilio Transport)</li>
+          <li>Multi-language support</li>
         </ul>
       </section>
     </div>
