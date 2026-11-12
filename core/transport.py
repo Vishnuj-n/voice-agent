@@ -85,62 +85,6 @@ class LocalTransport(Transport):
 
         return wav_buf.getvalue()
 
-    async def write_audio(self, audio_data: bytes) -> bool:
-        return await asyncio.to_thread(self._play, audio_data)
-
-    def _play(self, audio_data: bytes) -> bool:
-        try:
-            # Parse WAV header manually to support both PCM and IEEE float formats.
-            # Python's wave module only supports format 1 (PCM) and rejects
-            # format 3 (IEEE float) used by Cartesia's pcm_f32le output.
-            if audio_data[:4] != b"RIFF" or audio_data[8:12] != b"WAVE":
-                raise ValueError("Not a WAV file")
-
-            fmt_tag = audio_data[20:22]
-            channels = int.from_bytes(audio_data[22:24], "little")
-            frame_rate = int.from_bytes(audio_data[24:28], "little")
-            bits_per_sample = int.from_bytes(audio_data[34:36], "little")
-
-            # Find the 'data' chunk
-            data_offset = 12
-            while data_offset < len(audio_data) - 8:
-                chunk_id = audio_data[data_offset : data_offset + 4]
-                chunk_size = int.from_bytes(
-                    audio_data[data_offset + 4 : data_offset + 8], "little"
-                )
-                if chunk_id == b"data":
-                    data_offset += 8
-                    break
-                data_offset += 8 + chunk_size
-            else:
-                raise ValueError("No data chunk found in WAV file")
-
-            raw_data = audio_data[data_offset : data_offset + chunk_size]
-
-            if fmt_tag == b"\x03\x00" and bits_per_sample == 32:
-                # IEEE float 32-bit (format tag 3) — Cartesia pcm_f32le output
-                data = np.frombuffer(raw_data, dtype=np.float32)
-            elif fmt_tag == b"\x01\x00" and bits_per_sample == 16:
-                data = np.frombuffer(raw_data, dtype=np.int16)
-            elif fmt_tag == b"\x01\x00" and bits_per_sample == 8:
-                data = np.frombuffer(raw_data, dtype=np.uint8).astype(np.float32) - 128
-            elif fmt_tag == b"\x01\x00" and bits_per_sample == 32:
-                data = np.frombuffer(raw_data, dtype=np.int32).astype(np.float32)
-            else:
-                raise ValueError(
-                    f"Unsupported WAV format: tag={fmt_tag.hex()}, bits={bits_per_sample}"
-                )
-
-            if channels > 1:
-                data = data.reshape(-1, channels)
-
-            sd.play(data, samplerate=frame_rate)
-            sd.wait()
-            return True
-        except Exception as e:
-            print(f"Error in playback: {e}")
-            return False
-
     async def play_stream(
         self,
         audio_chunks: AsyncIterator[bytes],

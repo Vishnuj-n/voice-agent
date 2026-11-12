@@ -156,10 +156,6 @@ class BrowserTransport(Transport):
             wav_file.writeframes(pcm_data)
         return wav_buf.getvalue()
 
-    async def write_audio(self, audio_data: bytes) -> bool:
-        """Write complete audio to browser (unused in streaming mode)."""
-        return True
-
     async def play_stream(
         self,
         audio_chunks: AsyncIterator[bytes],

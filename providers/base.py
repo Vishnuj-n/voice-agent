@@ -32,11 +32,6 @@ class Transport(ABC):
         pass
 
     @abstractmethod
-    async def write_audio(self, audio_data: bytes) -> bool:
-        """Write audio output (e.g., to speaker). Returns True on success."""
-        pass
-
-    @abstractmethod
     async def play_stream(
         self,
         audio_chunks: AsyncIterator[bytes],

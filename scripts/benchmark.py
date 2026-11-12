@@ -52,12 +52,6 @@ class HeadlessBenchmarkTransport(Transport):
     async def read_audio(self) -> bytes:
         return b""
 
-    async def write_audio(self, audio_data: bytes) -> bool:
-        if self.first_chunk_received_at is None:
-            self.first_chunk_received_at = time.perf_counter()
-        self.received_chunks.append(audio_data)
-        return True
-
     async def play_stream(
         self, audio_chunks: AsyncIterator[bytes], audio_format: AudioFormat
     ) -> None:
