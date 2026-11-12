@@ -5,6 +5,9 @@ import logging
 import sys
 from pathlib import Path
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("voice-agent")
 
@@ -290,6 +293,10 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive()
             msg_type_bin = raw.get("type")
+
+            if msg_type_bin == "websocket.disconnect":
+                logger.info("WebSocket disconnect message received")
+                break
 
             if msg_type_bin == "websocket.receive":
                 # Binary frame = raw PCM Int16 audio from the browser
