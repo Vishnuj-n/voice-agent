@@ -6,7 +6,6 @@ from config import load_config
 DOMAIN_TABLE_MAP = {
     "finance": "finance_docs",
     "legal": "legal_docs",
-    "jira": "jira_docs",
 }
 
 async def similarity_search(domain: str, query_embedding: list[float], k: int = 5) -> list[dict]:

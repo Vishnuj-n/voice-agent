@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import uuid
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -122,13 +124,44 @@ def init_db():
             """)
         )
 
-        conn.execute(
-            text("""
-                CREATE TABLE IF NOT EXISTS jira_docs (
-                    id BIGSERIAL PRIMARY KEY,
-                    content TEXT,
-                    embedding VECTOR,
-                    metadata JSONB
-                )
-            """)
-        )
+
+def record_session_start(session_id: str, bot_name: str) -> None:
+    try:
+        with get_session() as s:
+            s.add(CallSession(id=session_id, bot_name=bot_name, started_at=datetime.now(timezone.utc).isoformat()))
+            s.commit()
+    except Exception:
+        pass
+
+
+def record_session_end(session_id: str) -> None:
+    try:
+        with get_session() as s:
+            cs = s.get(CallSession, session_id)
+            if cs:
+                cs.ended_at = datetime.now(timezone.utc).isoformat()
+                s.commit()
+    except Exception:
+        pass
+
+
+def record_turn(session_id: str, turn_index: int, caller_text: str, bot_text: str, result) -> None:
+    try:
+        with get_session() as s:
+            s.add(Turn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                turn_index=turn_index,
+                caller_text=caller_text,
+                bot_text=bot_text,
+                stt_ms=round(result.stt_ms),
+                llm_total_ms=round(result.llm_total_ms),
+                llm_time_to_first_token_ms=round(result.llm_time_to_first_token_ms),
+                tts_total_ms=round(result.tts_total_ms),
+                tts_time_to_first_audio_ms=round(result.tts_time_to_first_audio_ms),
+                total_ms=round(result.total_ms),
+                created_at=datetime.now(timezone.utc).isoformat(),
+            ))
+            s.commit()
+    except Exception:
+        pass

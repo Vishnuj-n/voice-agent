@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import sys
+import uuid
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -23,6 +24,7 @@ from core.pipeline import StreamingPipeline, PipelineCallbacks
 from providers.registry import get_stt_provider, get_tts_provider
 from bots import BOT_REGISTRY
 from config import load_config
+from db.session import record_session_start, record_session_end, record_turn
 
 app = FastAPI(title="Voice Agent API")
 
@@ -80,6 +82,8 @@ async def websocket_endpoint(ws: WebSocket):
     current_bot = default_bot
     conversation_task: asyncio.Task | None = None
     session_active = False
+    current_session_id: str | None = None
+    turn_counter = 0
 
     await ws.send_json({"type": "status", "state": "connected"})
     await ws.send_json({"type": "bots", "bots": BOTS})
@@ -190,6 +194,9 @@ async def websocket_endpoint(ws: WebSocket):
                                 "total_ms": round(result_turn.total_ms),
                             }
                         )
+                        turn_counter += 1
+                        if current_session_id:
+                            record_turn(current_session_id, turn_counter, final_text, result_turn.full_text, result_turn)
                         # Drain any stale mic audio that arrived during the turn before reopening mic
                         while not transport._audio_buffer.empty():
                             try:
@@ -241,7 +248,11 @@ async def websocket_endpoint(ws: WebSocket):
 
                 logger.info(f"Utterance received: {len(audio)} bytes")
 
+                user_text_captured = ""
+
                 async def on_transcript(text: str) -> None:
+                    nonlocal user_text_captured
+                    user_text_captured = text
                     logger.info(f"Transcript: {text}")
                     await ws.send_json(
                         {
@@ -288,6 +299,10 @@ async def websocket_endpoint(ws: WebSocket):
                             "total_ms": round(result.total_ms),
                         }
                     )
+
+                    turn_counter += 1
+                    if current_session_id:
+                        record_turn(current_session_id, turn_counter, user_text_captured, result.full_text, result)
 
                     if session_active:
                         await ws.send_json({"type": "status", "state": "listening"})
@@ -336,6 +351,15 @@ async def websocket_endpoint(ws: WebSocket):
                 logger.info(f"Received message: {msg_type}")
 
                 if msg_type == "select_bot":
+                    if session_active:
+                        await ws.send_json(
+                            {
+                                "type": "error",
+                                "message": "Cannot switch bots during an active session. Please stop the session first.",
+                            }
+                        )
+                        continue
+
                     bot_id = msg.get("bot", "healthcare")
                     if bot_id in BOT_REGISTRY:
                         current_bot = bot_id
@@ -348,6 +372,10 @@ async def websocket_endpoint(ws: WebSocket):
                     if conversation_task and not conversation_task.done():
                         logger.warning("Session already active, ignoring start_session")
                         continue
+
+                    current_session_id = str(uuid.uuid4())
+                    turn_counter = 0
+                    record_session_start(current_session_id, current_bot)
 
                     while not transport._audio_buffer.empty():
                         try:
@@ -374,6 +402,9 @@ async def websocket_endpoint(ws: WebSocket):
                 elif msg_type == "stop_session":
                     logger.info("Stopping session...")
                     session_active = False
+                    if current_session_id:
+                        record_session_end(current_session_id)
+                        current_session_id = None
                     pipeline.cancel()
 
                     if conversation_task and not conversation_task.done():
@@ -399,6 +430,9 @@ async def websocket_endpoint(ws: WebSocket):
             pass
     finally:
         session_active = False
+        if current_session_id:
+            record_session_end(current_session_id)
+            current_session_id = None
         pipeline.cancel()
         if conversation_task and not conversation_task.done():
             conversation_task.cancel()
