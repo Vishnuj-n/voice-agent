@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from groq import AsyncGroq
 from pydantic_ai.models import Model
 from pydantic_ai.models.groq import GroqModel
@@ -144,7 +145,7 @@ class GroqStreamingWhisperSTT(StreamingSTTProvider):
                             if speech_chunks >= min_speech_chunks:
                                 wav_data = self._wrap_wav(bytes(accumulated_pcm))
                                 final_text = await self._run_whisper(wav_data)
-                                if final_text:
+                                if final_text and re.sub(r"[^\w\s]", "", final_text).strip():
                                     await self._results_queue.put(
                                         STTResult(text=final_text, is_final=True, is_speech_final=True)
                                     )

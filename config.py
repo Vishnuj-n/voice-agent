@@ -44,8 +44,23 @@ class Settings(BaseSettings):
     # --- Bot ---
     default_bot: str = "healthcare"
 
+    # --- Environment / Server ---
+    env: str = "development"
+    host: str | None = None
+    port: int = 8000
+
     # --- CORS ---
     web_origin: str = "http://localhost:3000"
+
+    @property
+    def is_dev(self) -> bool:
+        return self.env.lower() in ("dev", "development", "local")
+
+    @property
+    def server_host(self) -> str:
+        if self.host:
+            return self.host
+        return "127.0.0.1" if self.is_dev else "0.0.0.0"
 
     @property
     def provider_llm(self) -> str:

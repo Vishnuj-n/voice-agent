@@ -80,15 +80,21 @@ export function useWebSocket() {
           break
 
         case 'transcript':
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              text: msg.text,
-              speaker: msg.speaker,
-              timestamp: Date.now(),
-            },
-          ])
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.speaker === 'user' && last.text === msg.text) {
+              return prev
+            }
+            return [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                text: msg.text,
+                speaker: msg.speaker,
+                timestamp: Date.now(),
+              },
+            ]
+          })
           break
 
         case 'response_text':
@@ -110,6 +116,11 @@ export function useWebSocket() {
           break
 
         case 'audio_start':
+          // Stop any leftover sources from prior turns to avoid double-talk and clipping
+          for (const src of activeSourcesRef.current) {
+            try { src.stop() } catch { /* already stopped */ }
+          }
+          activeSourcesRef.current = []
           audioFormatRef.current = msg.format ?? null
           nextPlayTimeRef.current = 0
           break
@@ -117,9 +128,13 @@ export function useWebSocket() {
         case 'audio_chunk': {
           const ctx = audioCtxRef.current
           if (!ctx) { console.warn('[WS] AudioContext not ready'); break }
-          ctx.resume().then(() => {
+          if (ctx.state === 'suspended') {
+            ctx.resume().then(() => {
+              scheduleAudioChunk(msg.data, ctx, audioFormatRef.current, nextPlayTimeRef, activeSourcesRef)
+            })
+          } else {
             scheduleAudioChunk(msg.data, ctx, audioFormatRef.current, nextPlayTimeRef, activeSourcesRef)
-          })
+          }
           break
         }
 
@@ -179,12 +194,16 @@ export function useWebSocket() {
 
   const sendAudioChunk = useCallback((pcmData: ArrayBuffer) => {
     // Drop mic audio while the bot is thinking or speaking.
-    // This is the primary guard against phantom transcriptions: without it,
-    // chunks captured during TTS playback accumulate in the server buffer and
-    // are fed to STT at the start of the next turn — producing "Thank you"
-    // and other echo artifacts.
+    // Also drop mic frames if the AudioContext is actively playing or draining audio,
+    // preventing acoustic echo from the speakers entering the microphone.
     const state = connectionStateRef.current
     if (state !== 'listening') return
+
+    const ctx = audioCtxRef.current
+    // Give 150ms trailing margin after audio finishes for room reverberation to dissipate
+    if (ctx && nextPlayTimeRef.current > 0 && ctx.currentTime < nextPlayTimeRef.current + 0.15) {
+      return
+    }
 
     audioChunkCount++
     if (audioChunkCount % 50 === 1) {
@@ -269,22 +288,31 @@ function scheduleAudioChunk(
   // Decode PCM encoding → Float32
   let channelData: Float32Array
   if (encoding === 'pcm_f32le' || encoding === 'float32') {
-    channelData = new Float32Array(bytes.buffer)
+    const floatCount = Math.floor(bytes.byteLength / 4)
+    channelData = new Float32Array(bytes.buffer, bytes.byteOffset, floatCount)
   } else if (encoding === 'pcm_s16le' || encoding === 'int16') {
-    const int16 = new Int16Array(bytes.buffer)
+    const int16Count = Math.floor(bytes.byteLength / 2)
+    const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, int16Count)
     channelData = new Float32Array(int16.length)
     for (let i = 0; i < int16.length; i++) channelData[i] = int16[i] / 32768.0
   } else {
-    channelData = new Float32Array(bytes.buffer)
+    const floatCount = Math.floor(bytes.byteLength / 4)
+    channelData = new Float32Array(bytes.buffer, bytes.byteOffset, floatCount)
   }
 
-  const numSamples = channelData.length / numChannels
+  const numSamples = Math.floor(channelData.length / numChannels)
+  if (numSamples <= 0) return
+
   const audioBuffer = ctx.createBuffer(numChannels, numSamples, sampleRate)
   for (let ch = 0; ch < numChannels; ch++) {
     audioBuffer.getChannelData(ch).set(channelData.subarray(ch * numSamples, (ch + 1) * numSamples))
   }
 
-  const startAt = Math.max(ctx.currentTime, nextPlayTimeRef.current)
+  // Jitter buffer: 60ms initial lookahead to absorb synthesis and network packet jitter.
+  // Chains chunks back-to-back seamlessly to prevent buffer underruns and audio clicking/cracking.
+  const JITTER_BUFFER_SEC = 0.06
+  const now = ctx.currentTime
+  const startAt = nextPlayTimeRef.current > now ? nextPlayTimeRef.current : (now + JITTER_BUFFER_SEC)
   nextPlayTimeRef.current = startAt + audioBuffer.duration
 
   const source = ctx.createBufferSource()

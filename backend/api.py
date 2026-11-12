@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -119,23 +120,31 @@ async def websocket_endpoint(ws: WebSocket):
 
                 if result.text:
                     accumulated_transcript = result.text.strip()
-                    # Send live interim transcript to frontend
-                    await ws.send_json(
-                        {
-                            "type": "interim_transcript" if not result.is_final else "transcript",
-                            "text": accumulated_transcript,
-                            "speaker": "user",
-                            "is_final": result.is_final,
-                        }
-                    )
+                    # Send live interim transcript to frontend only while utterance is in progress
+                    if not result.is_final:
+                        await ws.send_json(
+                            {
+                                "type": "interim_transcript",
+                                "text": accumulated_transcript,
+                                "speaker": "user",
+                                "is_final": False,
+                            }
+                        )
 
                 # When Deepgram / STT detects end of speech (endpointing)
                 if result.is_speech_final and accumulated_transcript:
-                    final_text = accumulated_transcript
+                    final_text = accumulated_transcript.strip()
                     accumulated_transcript = ""
+
+                    # Filter out Whisper silence/punctuation hallucinations (e.g. '.', '...', ' !')
+                    clean_text = re.sub(r"[^\w\s]", "", final_text).strip()
+                    if not clean_text:
+                        logger.info(f"Ignored noise/punctuation-only transcript: '{final_text}'")
+                        continue
+
                     logger.info(f"End of speech detected: '{final_text}' -> Triggering LLM")
 
-                    # Broadcast final confirmed transcript
+                    # Broadcast final confirmed transcript strictly once
                     await ws.send_json(
                         {
                             "type": "transcript",
@@ -181,11 +190,23 @@ async def websocket_endpoint(ws: WebSocket):
                                 "total_ms": round(result_turn.total_ms),
                             }
                         )
+                        # Drain any stale mic audio that arrived during the turn before reopening mic
+                        while not transport._audio_buffer.empty():
+                            try:
+                                transport._audio_buffer.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+
                         if session_active:
                             await ws.send_json({"type": "status", "state": "listening"})
                     except Exception as e:
                         logger.error(f"Pipeline turn error: {e}", exc_info=True)
                         await ws.send_json({"type": "error", "message": f"Pipeline error: {e}"})
+                        while not transport._audio_buffer.empty():
+                            try:
+                                transport._audio_buffer.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
                         if session_active:
                             await ws.send_json({"type": "status", "state": "listening"})
 
