@@ -23,14 +23,23 @@ class Settings(BaseSettings):
     groq_llm_model: str = "llama-3.3-70b-versatile"
     groq_stt_model: str = "whisper-large-v3-turbo"
 
+    # --- Deepgram (Streaming STT) ---
+    deepgram_api_key: str = ""
+    deepgram_stt_model: str = "nova-2"
+
     # --- Cartesia (TTS) ---
     cartesia_api_key: str
     cartesia_voice_id: str
     cartesia_model_id: str = "sonic-3.5"
 
-    # --- OpenAI (Embeddings) ---
-    openai_api_key: str
+    # --- OpenAI (optional — only needed if switching back to OpenAI embeddings) ---
+    openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
+
+    # --- Jina AI (Embeddings — free tier available) ---
+    # Get your Jina AI API key for free: https://jina.ai/?sui=apikey
+    jina_api_key: str = ""
+    jina_embedding_model: str = "jina-embeddings-v5-text-small"
 
     # --- Bot ---
     default_bot: str = "healthcare"
@@ -44,6 +53,8 @@ class Settings(BaseSettings):
 
     @property
     def provider_stt(self) -> str:
+        if self.deepgram_api_key:
+            return f"deepgram:{self.deepgram_stt_model}"
         return f"groq:{self.groq_stt_model}"
 
     @property
@@ -52,7 +63,11 @@ class Settings(BaseSettings):
 
     @property
     def provider_embedding(self) -> str:
-        return f"openai:{self.openai_embedding_model}"
+        # Jina AI is the default embedding provider (free tier available).
+        # Set JINA_API_KEY in .env to use it.
+        # To fall back to OpenAI, change this to:
+        #   return f"openai:{self.openai_embedding_model}"
+        return f"jina:{self.jina_embedding_model}"
 
 
 @lru_cache

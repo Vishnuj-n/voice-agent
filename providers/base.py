@@ -66,6 +66,38 @@ class STTProvider(ABC):
         pass
 
 
+@dataclasses.dataclass
+class STTResult:
+    """Live STT streaming event."""
+    text: str
+    is_final: bool
+    is_speech_final: bool
+
+
+class StreamingSTTProvider(STTProvider):
+    """Abstract base class for real-time WebSocket/streaming STT."""
+
+    @abstractmethod
+    async def connect(self) -> None:
+        """Open a streaming connection with the STT provider."""
+        pass
+
+    @abstractmethod
+    async def send_audio(self, audio_chunk: bytes) -> None:
+        """Send raw PCM audio bytes to the active stream."""
+        pass
+
+    @abstractmethod
+    async def stream_transcripts(self) -> AsyncIterator[STTResult]:
+        """Async iterator yielding live transcript events."""
+        pass
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close the active streaming connection."""
+        pass
+
+
 class TTSProvider(ABC):
     """Abstract base class representing a Text-to-Speech provider."""
 

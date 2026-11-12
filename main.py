@@ -1,8 +1,11 @@
+import sys
 import asyncio
+import argparse
 from providers.base import Transport
 from providers.registry import get_stt_provider, get_tts_provider
-from bots.healthcare import agent
+from bots import BOT_REGISTRY
 from core.pipeline import StreamingPipeline
+from config import load_config
 
 
 async def run_one_turn(
@@ -52,6 +55,23 @@ def wants_to_exit(text: str) -> bool:
 async def main():
     from core.transport import LocalTransport
 
+    cfg = load_config()
+    parser = argparse.ArgumentParser(description="Voice Agent CLI")
+    parser.add_argument(
+        "--bot",
+        type=str,
+        default=cfg.default_bot,
+        choices=list(BOT_REGISTRY.keys()),
+        help=f"Bot agent to load (default: {cfg.default_bot})",
+    )
+    args = parser.parse_args()
+
+    bot_name = args.bot
+    agent = BOT_REGISTRY.get(bot_name)
+    if not agent:
+        print(f"Error: Unknown bot '{bot_name}'")
+        return
+
     try:
         transport = LocalTransport()
         stt = get_stt_provider()
@@ -69,7 +89,8 @@ async def main():
 
     await transport.start()
     try:
-        print("Healthcare Bot — say 'bot stop' to exit")
+        print(f"Active bot: {bot_name.capitalize()}")
+        print(f"{bot_name.capitalize()} Bot — say 'bot stop' to exit")
         while await run_one_turn(pipeline, transport):
             pass
     except asyncio.CancelledError:
@@ -79,4 +100,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
