@@ -1,7 +1,8 @@
 from config import get_provider_string
 from providers.base import LLMProvider, STTProvider, TTSProvider, EmbeddingProvider
 from providers.cartesia import CartesiaTTS
-from providers.groq import GroqLLM, GroqWhisperSTT
+from providers.deepgram import DeepgramLiveSTT
+from providers.groq import GroqLLM, GroqWhisperSTT, GroqStreamingWhisperSTT
 from providers.openai import OpenAIEmbeddingProvider
 from providers.jina import JinaEmbeddingProvider
 
@@ -17,8 +18,10 @@ def get_stt_provider() -> STTProvider:
     provider_type = parts[0]
     model = parts[1] if len(parts) > 1 else None
 
-    if provider_type == "groq":
-        return GroqWhisperSTT(model=model)
+    if provider_type == "deepgram":
+        return DeepgramLiveSTT(model=model)
+    elif provider_type == "groq":
+        return GroqStreamingWhisperSTT(model=model)
     else:
         raise ValueError(f"Unsupported STT provider: {provider_type}")
 

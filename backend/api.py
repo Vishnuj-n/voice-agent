@@ -81,41 +81,142 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.send_json({"type": "bots", "bots": BOTS})
     logger.info("Sent initial status and bots list")
 
-    async def conversation_loop():
-        """Continuous voice session loop.
+    async def streaming_stt_loop():
+        """Streaming STT session loop.
 
-        Reads audio from the transport (which applies VAD internally),
-        runs the pipeline for each detected utterance, then loops back
-        to listen for the next utterance. Runs until cancelled.
+        Pipes live audio chunks directly into the streaming STT provider,
+        forwards interim transcripts ('hello' -> 'hello how' ...) to the UI,
+        and triggers the LLM turn as soon as endpointing / end-of-speech occurs.
         """
         nonlocal session_active
         session_active = True
-        logger.info("Conversation loop started")
+        logger.info("Streaming STT conversation loop started")
+
+        try:
+            await stt.connect()
+
+            accumulated_transcript = ""
+
+            async def feed_audio_loop():
+                while session_active and not pipeline._cancel_event.is_set():
+                    try:
+                        chunk = await transport._audio_buffer.get()
+                        if chunk is None:
+                            break
+                        await stt.send_audio(chunk)
+                    except (asyncio.CancelledError, Exception):
+                        break
+
+            audio_feeder = asyncio.create_task(feed_audio_loop())
+
+            async for result in stt.stream_transcripts():
+                if not session_active or pipeline._cancel_event.is_set():
+                    break
+
+                if result.text:
+                    accumulated_transcript = result.text.strip()
+                    # Send live interim transcript to frontend
+                    await ws.send_json(
+                        {
+                            "type": "interim_transcript" if not result.is_final else "transcript",
+                            "text": accumulated_transcript,
+                            "speaker": "user",
+                            "is_final": result.is_final,
+                        }
+                    )
+
+                # When Deepgram / STT detects end of speech (endpointing)
+                if result.is_speech_final and accumulated_transcript:
+                    final_text = accumulated_transcript
+                    accumulated_transcript = ""
+                    logger.info(f"End of speech detected: '{final_text}' -> Triggering LLM")
+
+                    # Broadcast final confirmed transcript
+                    await ws.send_json(
+                        {
+                            "type": "transcript",
+                            "text": final_text,
+                            "speaker": "user",
+                            "is_final": True,
+                        }
+                    )
+
+                    callbacks = PipelineCallbacks(
+                        on_text_delta=lambda token: ws.send_json(
+                            {
+                                "type": "response_text",
+                                "text": token,
+                            }
+                        ),
+                        on_status=lambda state: ws.send_json(
+                            {
+                                "type": "status",
+                                "state": state,
+                            }
+                        ),
+                    )
+
+                    try:
+                        result_turn = await pipeline.run_text_turn(
+                            text=final_text, callbacks=callbacks
+                        )
+                        logger.info(f"Pipeline turn complete: total={round(result_turn.total_ms)}ms")
+
+                        await ws.send_json(
+                            {
+                                "type": "metrics",
+                                "stt_ms": round(result_turn.stt_ms),
+                                "llm_total_ms": round(result_turn.llm_total_ms),
+                                "llm_time_to_first_token_ms": round(
+                                    result_turn.llm_time_to_first_token_ms
+                                ),
+                                "tts_time_to_first_audio_ms": round(
+                                    result_turn.tts_time_to_first_audio_ms
+                                ),
+                                "tts_total_ms": round(result_turn.tts_total_ms),
+                                "total_ms": round(result_turn.total_ms),
+                            }
+                        )
+                        if session_active:
+                            await ws.send_json({"type": "status", "state": "listening"})
+                    except Exception as e:
+                        logger.error(f"Pipeline turn error: {e}", exc_info=True)
+                        await ws.send_json({"type": "error", "message": f"Pipeline error: {e}"})
+                        if session_active:
+                            await ws.send_json({"type": "status", "state": "listening"})
+
+            if not audio_feeder.done():
+                audio_feeder.cancel()
+        except asyncio.CancelledError:
+            logger.info("Streaming STT loop cancelled")
+        except Exception as e:
+            logger.error(f"Streaming STT error: {e}", exc_info=True)
+        finally:
+            await stt.close()
+            session_active = False
+            logger.info("Streaming STT loop ended")
+
+    async def batch_conversation_loop():
+        """Continuous voice session loop (Fallback for batch STT providers)."""
+        nonlocal session_active
+        session_active = True
+        logger.info("Batch conversation loop started")
 
         try:
             while session_active and not pipeline._cancel_event.is_set():
-                # Read next utterance — blocks until VAD detects speech end
                 try:
                     audio = await transport.read_audio()
                 except asyncio.CancelledError:
                     break
 
                 if not audio or len(audio) < 100:
-                    # Empty or too short — transport was stopped or no speech
                     if session_active:
                         continue
                     break
 
                 logger.info(f"Utterance received: {len(audio)} bytes")
 
-                # Build callbacks for this turn
-                turn_start = __import__("time").perf_counter()
-                stt_ms = 0
-
                 async def on_transcript(text: str) -> None:
-                    nonlocal stt_ms
-                    # STT timing is handled inside pipeline, but we also
-                    # track it here for the transcript message timestamp
                     logger.info(f"Transcript: {text}")
                     await ws.send_json(
                         {
@@ -177,10 +278,13 @@ async def websocket_endpoint(ws: WebSocket):
                         await ws.send_json({"type": "status", "state": "listening"})
 
         except asyncio.CancelledError:
-            logger.info("Conversation loop cancelled")
+            logger.info("Batch conversation loop cancelled")
         finally:
             session_active = False
-            logger.info("Conversation loop ended")
+            logger.info("Batch conversation loop ended")
+
+    from providers.base import StreamingSTTProvider
+    is_streaming_stt = isinstance(stt, StreamingSTTProvider)
 
     try:
         while True:
@@ -221,7 +325,10 @@ async def websocket_endpoint(ws: WebSocket):
                             break
 
                     pipeline.reset_cancel()
-                    conversation_task = asyncio.create_task(conversation_loop())
+                    if is_streaming_stt:
+                        conversation_task = asyncio.create_task(streaming_stt_loop())
+                    else:
+                        conversation_task = asyncio.create_task(batch_conversation_loop())
                     await ws.send_json({"type": "status", "state": "listening"})
                     logger.info("Session started")
 

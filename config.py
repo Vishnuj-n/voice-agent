@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     groq_llm_model: str = "llama-3.3-70b-versatile"
     groq_stt_model: str = "whisper-large-v3-turbo"
 
+    # --- Deepgram (Streaming STT) ---
+    deepgram_api_key: str = ""
+    deepgram_stt_model: str = "nova-2"
+
     # --- Cartesia (TTS) ---
     cartesia_api_key: str
     cartesia_voice_id: str
@@ -49,6 +53,8 @@ class Settings(BaseSettings):
 
     @property
     def provider_stt(self) -> str:
+        if self.deepgram_api_key:
+            return f"deepgram:{self.deepgram_stt_model}"
         return f"groq:{self.groq_stt_model}"
 
     @property
